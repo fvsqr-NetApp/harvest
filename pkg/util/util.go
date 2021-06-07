@@ -6,6 +6,11 @@
 */
 package util
 
+import (
+	"net"
+	"os"
+)
+
 func MinLen(elements [][]string) int {
 	var min, i int
 	min = len(elements[0])
@@ -49,4 +54,29 @@ func EqualStringSlice(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+func GetFreePort() (int, error) {
+	addr, err := net.ResolveTCPAddr("tcp", ":0")
+	if err != nil {
+		return 0, err
+	}
+
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
+}
+
+func CheckFileExists(filePath string) bool {
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
+func LastString(ss []string) string {
+	return ss[len(ss)-1]
 }
