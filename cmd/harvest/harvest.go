@@ -27,6 +27,7 @@ import (
 	"goharvest2/pkg/conf"
 	"goharvest2/pkg/set"
 	"goharvest2/pkg/tree/node"
+	"goharvest2/pkg/util"
 	"io/ioutil"
 	"net"
 	_ "net/http/pprof" // #nosec since pprof is off by default
@@ -137,6 +138,13 @@ func doManageCmd(cmd *cobra.Command, args []string) {
 		}
 	}
 
+	var pollerNames []string
+	for _, p := range pollers.GetChildren() {
+		pollerNames = append(pollerNames, p.GetNameS())
+	}
+	// stop pollers which may have been renamed or no longer exists in harvest.yml
+	stopGhostPollers("poller", pollerNames)
+
 	if opts.foreground {
 		if opts.command != "start" {
 			fmt.Printf("invalid command [%s] for foreground mode\n", opts.command)
@@ -187,10 +195,16 @@ func doManageCmd(cmd *cobra.Command, args []string) {
 
 		if opts.command == "start" || opts.command == "restart" {
 			// only start poller if confirmed that it's not running
-			if s.status == "not running" || s.status == "stopped" || s.status == "killed" {
+			// if it's running do nothing
+			switch s.status {
+			case "running":
+				// do nothing but print current status, idempotent
+				printStatus(opts.longStatus, c1, c2, datacenter, name, s.promPort, s)
+				break
+			case "not running", "stopped", "killed":
 				s = startPoller(name, promPort, opts)
 				printStatus(opts.longStatus, c1, c2, datacenter, name, s.promPort, s)
-			} else {
+			default:
 				fmt.Printf("can't verify status of [%s]: kill poller and try again\n", name)
 			}
 		}
@@ -244,8 +258,10 @@ func getStatus(pollerName string) *pollerStatus {
 	if err := proc.Signal(syscall.Signal(0)); err != nil {
 		if os.IsPermission(err) {
 			fmt.Println("Insufficient privileges to send signal to process")
+		} else {
+			// if not a permission issue, assume process is not running
+			s.status = "not running"
 		}
-		s.status = "unknown: " + err.Error()
 		return s
 		// process not running, but did not clean PID file
 		// maybe it just exited, so give it a chance to clean
@@ -258,12 +274,12 @@ func getStatus(pollerName string) *pollerStatus {
 		*/
 	}
 
-	// process is running, validate that it's the poller we're looking fore
+	// process is running, validate that it's the poller we're looking for
 	// since PID might have changed (although very unlikely)
 	if data, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/cmdline", s.pid)); err == nil {
 		cmdline := string(bytes.ReplaceAll(data, []byte("\x00"), []byte(" ")))
 
-		if checkPollerIdentity(cmdline, pollerName) {
+		if checkPollerIdentity(cmdline, pollerName, true) {
 			s.status = "running"
 
 			if strings.Contains(cmdline, "--profiling") {
@@ -293,7 +309,7 @@ func getStatus(pollerName string) *pollerStatus {
 	return s
 }
 
-func checkPollerIdentity(cmdline, pollerName string) bool {
+func checkPollerIdentity(cmdline, pollerName string, verifyPollerName bool) bool {
 	if x := strings.Fields(cmdline); len(x) == 0 || !strings.HasSuffix(x[0], "poller") {
 		return false
 	}
@@ -311,10 +327,52 @@ func checkPollerIdentity(cmdline, pollerName string) bool {
 		return false
 	}
 
-	if y := strings.Fields(x[1]); len(y) == 0 || y[0] != pollerName {
-		return false
+	if verifyPollerName {
+		if y := strings.Fields(x[1]); len(y) == 0 || y[0] != pollerName {
+			return false
+		}
 	}
 	return true
+}
+
+func stopGhostPollers(search string, skipPoller []string) {
+	pids, err := util.GetProcessPids(search)
+	if err != nil {
+		fmt.Printf("Error while executing pgrep %v \n", err)
+		return
+	}
+	for _, p := range pids {
+		c, err := util.GetCmdLine(p)
+		if err != nil {
+			fmt.Printf("Missing pid %d %v \n", p, err)
+			continue
+		}
+
+		if checkPollerIdentity(c, "", false) {
+			// skip if this poller is defined in harvest config
+			var skip bool
+			for _, s := range skipPoller {
+				if util.ContainsWholeWord(c, s) {
+					skip = true
+					break
+				}
+			}
+			// if poller doesn't exists in harvest config
+			if !skip {
+				proc, err := os.FindProcess(p)
+				if err != nil {
+					fmt.Printf("process not found for pid %d %v \n", p, err)
+					continue
+				}
+				// send terminate signal
+				if err := proc.Signal(syscall.SIGTERM); err != nil {
+					if os.IsPermission(err) {
+						fmt.Printf("Insufficient priviliges to terminate process %v \n", err)
+					}
+				}
+			}
+		}
+	}
 }
 
 func killPoller(pollerName string) *pollerStatus {
@@ -337,7 +395,7 @@ func killPoller(pollerName string) *pollerStatus {
 			// last column can contain whitespace, so we should get at least 11
 			if fields := strings.Fields(line); len(fields) > 10 {
 				// CLI args are everything after 10th column
-				if checkPollerIdentity(strings.Join(fields[10:], " "), pollerName) {
+				if checkPollerIdentity(strings.Join(fields[10:], " "), pollerName, true) {
 					if x, err := strconv.Atoi(fields[1]); err == nil {
 						s.pid = x
 					}
