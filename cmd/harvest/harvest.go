@@ -25,6 +25,7 @@ import (
 	"goharvest2/cmd/tools/grafana"
 	"goharvest2/cmd/tools/zapi"
 	"goharvest2/pkg/conf"
+	"goharvest2/pkg/prometheus/filesd"
 	"goharvest2/pkg/set"
 	"goharvest2/pkg/tree/node"
 	"goharvest2/pkg/util"
@@ -139,12 +140,25 @@ func doManageCmd(cmd *cobra.Command, args []string) {
 	}
 
 	var pollerNames []string
+	var mapRunningPollersPromPort = make(map[string]string)
 	for _, p := range pollers.GetChildren() {
-		pollerNames = append(pollerNames, p.GetNameS())
+		pollerName := p.GetNameS()
+		pollerNames = append(pollerNames, pollerName)
+		pollerStatus := getStatus(pollerName)
+		if pollerStatus.status == "running" && len(pollerStatus.promPort) > 0 {
+			mapRunningPollersPromPort[pollerName] = pollerStatus.promPort
+		}
 	}
 	// stop pollers which may have been renamed or no longer exists in harvest.yml
 	stopGhostPollers("poller", pollerNames)
 
+	if opts.command == "start" || opts.command == "restart" {
+		if opts.config != HarvestConfigPath {
+			filesd.RefreshPrometheusSdConfig(opts.config, mapRunningPollersPromPort)
+		} else {
+			filesd.RefreshPrometheusSdConfig(HarvestConfigPath, mapRunningPollersPromPort)
+		}
+	}
 	if opts.foreground {
 		if opts.command != "start" {
 			fmt.Printf("invalid command [%s] for foreground mode\n", opts.command)
@@ -494,7 +508,7 @@ func startPoller(pollerName string, promPort string, opts *options) *pollerStatu
 			argv = append(argv, "--profiling")
 			argv = append(argv, "6060")
 		} else {
-			if port, err := freePort(); err != nil {
+			if port, err := util.GetFreePort("localhost"); err != nil {
 				// No free port, log it and move on
 				fmt.Println("profiling disabled due to no free ports")
 			} else {
@@ -641,21 +655,6 @@ func getMaxLengths(pollers *node.Node, pn, dc int) (int, int) {
 	return dc + 1, pn + 1
 }
 
-func freePort() (int, error) {
-	// TODO add range support [min, max] and read the range from harvest.yml
-	// Ask the kernel for a free open port
-	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
-	if err != nil {
-		return 0, err
-	}
-	dial, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		return 0, err
-	}
-	defer closeDial(dial)
-	return dial.Addr().(*net.TCPAddr).Port, nil
-}
-
 func closeDial(dial *net.TCPListener) {
 	_ = dial.Close()
 }
@@ -663,10 +662,14 @@ func closeDial(dial *net.TCPListener) {
 func getPollerPrometheusPort(p *node.Node, opts *options) string {
 	var promPort string
 	var err error
+	filesdPromPort := filesd.GetPromport(p.GetNameS())
 	// check first if poller argument has promPort defined
 	// else in exporter config of poller
 	if opts.promPort != 0 {
 		promPort = strconv.Itoa(opts.promPort)
+	} else if filesdPromPort != 0 {
+		fmt.Printf("file sd configuration found for %s and port %d \n", p.GetNameS(), filesdPromPort)
+		promPort = strconv.Itoa(filesdPromPort)
 	} else {
 		promPort, err = conf.GetPrometheusExporterPorts(p, opts.config)
 		if err != nil {

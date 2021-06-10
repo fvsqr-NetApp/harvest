@@ -11,15 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
-)
-
-import (
-	"net"
-	"os"
 )
 
 func MinLen(elements [][]string) int {
@@ -67,13 +63,13 @@ func EqualStringSlice(a, b []string) bool {
 	return true
 }
 
-func GetFreePort() (int, error) {
-	addr, err := net.ResolveTCPAddr("tcp", ":0")
+func GetFreePort(addr string) (int, error) {
+	url, err := net.ResolveTCPAddr("tcp", addr+":0")
 	if err != nil {
 		return 0, err
 	}
 
-	l, err := net.ListenTCP("tcp", addr)
+	l, err := net.ListenTCP("tcp", url)
 	if err != nil {
 		return 0, err
 	}

@@ -19,3 +19,6 @@
 bin/
 dist/
 cert/
+
+# runtime files
+promfilesd.yml
