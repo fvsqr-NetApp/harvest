@@ -170,6 +170,20 @@ func (s *Schedule) NewTaskString(n, i string, f func() (*matrix.Matrix, error)) 
 	}
 }
 
+// @UNSAFE
+func (s *Schedule) StartTaskAfter(name string, i time.Duration) {
+    if t := s.GetTask(name); t != nil {
+        t.timer = time.Now().Add((i-t.interval))
+    }
+}
+
+// @UNSAFE
+func (s *Schedule) StartTaskAfterString(name, i string) {
+    if d, err := time.ParseDuration(i); err == nil {
+        s.StartTaskAfter(name, d)
+    }
+}
+
 // SetInterval changes the interval of an existing task. Changing interval is safe
 // at any time.
 func (s *Schedule) SetInterval(t *task, i time.Duration) error {

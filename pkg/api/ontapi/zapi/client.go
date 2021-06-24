@@ -183,14 +183,19 @@ func (c *Client) Serial() string {
 
 // Info returns a string with details about the ONTAP system identity
 func (c *Client) Info() string {
-	var model, version string
+    model, version := c.InfoTuple()
+    return fmt.Sprintf("%s (%s: %s) (serial %s) (%s)", c.Name(), model, version, c.Serial(), c.Release())
+}
+
+func (c *Client) InfoTuple() (string, string) {
+    var model, version string
 	if c.IsClustered() {
 		model = "CDOT"
 	} else {
 		model = "7MODE"
 	}
-	version = fmt.Sprintf("(%s version %d.%d.%d)", model, c.system.version[0], c.system.version[1], c.system.version[2])
-	return fmt.Sprintf("%s %s (serial %s) (%s)", c.Name(), version, c.Serial(), c.Release())
+	version = fmt.Sprintf("%d.%d.%d", c.system.version[0], c.system.version[1], c.system.version[2])
+    return model, version
 }
 
 // BuildRequestString builds an API request from the string request

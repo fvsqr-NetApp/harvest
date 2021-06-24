@@ -45,10 +45,8 @@ import (
 	"net/http"
 	_ "net/http/pprof" // #nosec since pprof is off by default
 	"os"
-	"os/exec"
 	"os/signal"
 	"path"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -57,11 +55,12 @@ import (
 
 // default params
 var (
-	pollerSchedule  = "60s"
-	logFileName     = ""
-	logMaxMegaBytes = logging.DefaultLogMaxMegaBytes // 10MB
-	logMaxBackups   = logging.DefaultLogMaxBackups
-	logMaxAge       = logging.DefaultLogMaxAge
+    selfmonitorInterval  = "60s"
+    telemetryInterval    = "168h"
+	logFileName          = ""
+	logMaxMegaBytes      = logging.DefaultLogMaxMegaBytes // 10MB
+	logMaxBackups        = logging.DefaultLogMaxBackups
+	logMaxAge            = logging.DefaultLogMaxAge
 )
 
 // init with default configuration by default it gets logged both to console and  harvest.log
@@ -268,15 +267,34 @@ func (p *Poller) Init() error {
 	// initialize a schedule for the poller, this is the interval at which
 	// we will check the status of collectors, exporters and target system,
 	// and send metadata to exporters
-	if s := p.params.GetChildContentS("poller_schedule"); s != "" {
-		pollerSchedule = s
+	if s := p.params.GetChildS("poller_schedule"); s != nil {
+        if x := s.GetChildContentS("selfmonitor"); x != "" {
+            selfmonitorInterval = x
+        }
+        if x := s.GetChildContentS("telemetry"); x != "" {
+            telemetryInterval = x
+        }
 	}
+
 	p.schedule = schedule.New()
-	if err = p.schedule.NewTaskString("poller", pollerSchedule, nil); err != nil {
-		logger.Error().Stack().Err(err).Msg("set schedule:")
-		return err
-	}
-	logger.Debug().Msgf("set poller schedule with %s frequency", pollerSchedule)
+    if err = p.schedule.NewTaskString("selfmonitor", selfmonitorInterval, p.SelfMonitor); err != nil {
+        logger.Error().Stack().Err(err).Msg("add task \"selfmonitor\" to schedule:")
+        return err
+    }
+
+	logger.Info().Msgf("set self-monitor schedule with %s frequency", selfmonitorInterval)
+
+    if p.params.GetChildContentS("send_asup_stats") == "true" {
+        if err = p.schedule.NewTaskString("telemetry", telemetryInterval, p.SendTelemetry); err != nil {
+            logger.Error().Stack().Err(err).Msg("add task \"telemetry\" to schedule:")
+            return err
+        }
+
+        // @DEBUG, give ZapiPerf chance to collect some data
+        p.schedule.StartTaskAfterString("telemetry", "120s")
+
+        logger.Info().Msgf("set telemetry schedule with %s frequency", telemetryInterval)
+    }
 
 	// famous last words
 	logger.Info().Msg("poller start-up complete")
@@ -317,100 +335,17 @@ func (p *Poller) Start() {
 // report metadata and do some housekeeping
 func (p *Poller) Run() {
 
-	// poller schedule has just one task
-	task := p.schedule.GetTask("poller")
-
-	// number of collectors/exporters that are still up
-	upCollectors := 0
-	upExporters := 0
-
 	for {
 
-		if task.IsDue() {
+        for _, task := range p.schedule.GetTasks() {
 
-			task.Start()
+            if task.IsDue() {
+                task.Run() // ignore errors, will be logged by the task
+            }
+        }
 
-			// flush metadata
-			p.status.Reset()
-			p.metadata.Reset()
-
-			// ping target system
-			if ping, ok := p.ping(); ok {
-				p.status.LazySetValueUint8("status", "host", 0)
-				p.status.LazySetValueFloat32("ping", "host", ping)
-			} else {
-				p.status.LazySetValueUint8("status", "host", 1)
-			}
-
-			// add number of goroutines to metadata
-			// @TODO: cleanup, does not belong to "status"
-			p.status.LazySetValueInt("goroutines", "host", runtime.NumGoroutine())
-
-			upc := 0 // up collectors
-			upe := 0 // up exporters
-
-			// update status of collectors
-			for _, c := range p.collectors {
-				code, status, msg := c.GetStatus()
-				logger.Debug().Msgf("collector (%s:%s) status: (%d - %s) %s", c.GetName(), c.GetObject(), code, status, msg)
-
-				if code == 0 {
-					upc++
-				}
-
-				key := c.GetName() + "." + c.GetObject()
-
-				p.metadata.LazySetValueUint64("count", key, c.GetCollectCount())
-				p.metadata.LazySetValueUint8("status", key, code)
-
-				if msg != "" {
-					if instance := p.metadata.GetInstance(key); instance != nil {
-						instance.SetLabel("reason", msg)
-					}
-				}
-			}
-
-			// update status of exporters
-			for _, e := range p.exporters {
-				code, status, msg := e.GetStatus()
-				logger.Debug().Msgf("exporter (%s) status: (%d - %s) %s", e.GetName(), code, status, msg)
-
-				if code == 0 {
-					upe++
-				}
-
-				key := e.GetClass() + "." + e.GetName()
-
-				p.metadata.LazySetValueUint64("count", key, e.GetExportCount())
-				p.metadata.LazySetValueUint8("status", key, code)
-
-				if msg != "" {
-					if instance := p.metadata.GetInstance(key); instance != nil {
-						instance.SetLabel("reason", msg)
-					}
-				}
-			}
-
-			// @TODO if there are no "master" exporters, don't collect metadata
-			for _, e := range p.exporters {
-				if err := e.Export(p.metadata); err != nil {
-					logger.Error().Stack().Err(err).Msg("export component metadata:")
-				}
-				if err := e.Export(p.status); err != nil {
-					logger.Error().Stack().Err(err).Msg("export target metadata:")
-				}
-			}
-
-			// only zeroLog when numbers have changes, since hopefully that happens rarely
-			if upc != upCollectors || upe != upExporters {
-				logger.Info().Msgf("updated status, up collectors: %d (of %d), up exporters: %d (of %d)", upc, len(p.collectors), upe, len(p.exporters))
-			}
-			upCollectors = upc
-			upExporters = upe
-		}
-
-		p.schedule.Sleep()
-	}
+        p.schedule.Sleep()
+    }
 }
 
 // Stop gracefully exits the program by closing zeroLog
@@ -426,24 +361,6 @@ func (p *Poller) handleSignals(signalChannel chan os.Signal) {
 		p.Stop()
 		os.Exit(0)
 	}
-}
-
-// ping target system, report if it's available or not
-// and if available, response time
-func (p *Poller) ping() (float32, bool) {
-
-	cmd := exec.Command("ping", p.target, "-w", "5", "-c", "1", "-q")
-
-	if out, err := cmd.Output(); err == nil {
-		if x := strings.Split(string(out), "mdev = "); len(x) > 1 {
-			if y := strings.Split(x[len(x)-1], "/"); len(y) > 1 {
-				if p, err := strconv.ParseFloat(y[0], 32); err == nil {
-					return float32(p), true
-				}
-			}
-		}
-	}
-	return 0, false
 }
 
 // dynamically load and initialize a collector

@@ -86,6 +86,7 @@ func (me *Zapi) InitVars() error {
 		return errors.New(errors.ERR_CONNECTION, err.Error())
 	}
 	me.Logger.Debug().Msgf("connected to: %s", me.Client.Info())
+    me.HostModel, me.HostVersion = me.Client.InfoTuple()
 
 	me.TemplateFn = me.Params.GetChildS("objects").GetChildContentS(me.Object) // @TODO err handling
 

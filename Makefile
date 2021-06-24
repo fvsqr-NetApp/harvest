@@ -86,7 +86,7 @@ harvest: deps
 
 	@# Build the harvest poller
 	@echo "Building poller"
-	@GOOS=$(GOOS) GOARCH=$(GOARCH) go build -trimpath -o bin/poller -ldflags=$(LD_FLAGS) cmd/poller/poller.go
+	@cd cmd/poller; GOOS=$(GOOS) GOARCH=$(GOARCH) go build -trimpath -o ../../bin/poller -ldflags=$(LD_FLAGS)
 
 	@# Build the daemonize for the pollers
 	@echo "Building daemonize"

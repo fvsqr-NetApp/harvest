@@ -50,6 +50,8 @@ type Collector interface {
 	GetParams() *node.Node
 	GetOptions() *options.Options
 	GetCollectCount() uint64
+    GetMetadata() *matrix.Matrix
+    GetHostInfo() (string, string)
 	AddCollectCount(uint64)
 	GetStatus() (uint8, string, string)
 	SetStatus(uint8, string)
@@ -93,6 +95,8 @@ type AbstractCollector struct {
 	// this is different from what the collector will have in its metadata, since this variable
 	// holds count independent of the poll interval of the collector, used to give stats to Poller
 	countMux *sync.Mutex // used for atomic access to collectCount
+    HostVersion string
+    HostModel string
 }
 
 // New creates an AbstractCollector with the given arguments:
@@ -231,6 +235,15 @@ func Init(c Collector) error {
 	c.SetStatus(0, "initialized")
 
 	return nil
+}
+
+// @TODO unsafe to read concurrently
+func (me *AbstractCollector) GetMetadata() *matrix.Matrix {
+    return me.Metadata
+}
+
+func (me *AbstractCollector) GetHostInfo() (string, string) {
+    return me.HostVersion, me.HostModel
 }
 
 // Start will run the collector in an infinity loop

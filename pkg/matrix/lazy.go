@@ -49,6 +49,15 @@ func (me *Matrix) LazyGetValueInt64(m, i string) (int64, bool) {
 	return 0, false
 }
 
+func (me *Matrix) LazyGetValueFloat32(m, i string) (float32, bool) {
+	if metric := me.GetMetric(m); metric != nil {
+		if instance := me.GetInstance(i); instance != nil {
+			return metric.GetValueFloat32(instance)
+		}
+	}
+	return 0, false
+}
+
 /*
 func (me *Matrix) LazyGetValueInt64(mkey, ikey string) int64 {
 	var v int64
