@@ -86,12 +86,7 @@ func doManageCmd(cmd *cobra.Command, args []string) {
 	opts.command = cmd.Name()
 	var err error
 	HarvestHomePath = conf.GetHarvestHomePath()
-	HarvestConfigPath, err = conf.GetDefaultHarvestConfigPath()
-
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	HarvestConfigPath = conf.GetDefaultHarvestConfigPath()
 
 	if opts.verbose {
 		_ = cmd.Flags().Set("loglevel", "1")
@@ -103,7 +98,7 @@ func doManageCmd(cmd *cobra.Command, args []string) {
 	//cmd.DebugFlags()  // uncomment to print flags
 
 	pollers, err := conf.GetPollers(opts.config)
-	if err != nil {
+    if err != nil {
 		if os.IsNotExist(err) {
 			fmt.Printf("config [%s]: not found\n", opts.config)
 		} else {

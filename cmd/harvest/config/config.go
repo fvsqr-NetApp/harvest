@@ -96,16 +96,15 @@ func init() {
 }
 
 func Run(item string) {
-	var err error
-	harvestConfigPath, err = conf.GetDefaultHarvestConfigPath()
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+
+	var (
+        err error
+	    confNode, pollers, exporters *node.Node
+    )
+
+	harvestConfigPath = conf.GetDefaultHarvestConfigPath()
 
 	harvestHomePath = conf.GetHarvestHomePath()
-
-	var confNode, pollers, exporters *node.Node
 
 	if _dialog = dialog.New(); !_dialog.Enabled() {
 		fmt.Println("This program requires [dialog] or [whiptail].")

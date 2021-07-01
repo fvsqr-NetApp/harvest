@@ -318,7 +318,7 @@ func getData(c *client.Client, args *Args) (*node.Node, error) {
 var args = &Args{}
 
 func init() {
-	configPath, _ := conf.GetDefaultHarvestConfigPath()
+	configPath := conf.GetDefaultHarvestConfigPath()
 
 	ZapiCmd.AddCommand(showCmd, exportCmd)
 	flags := ZapiCmd.PersistentFlags()

@@ -193,18 +193,16 @@ func GetPoller(configFp, pollerName string) (*node.Node, error) {
 
 /*GetDefaultHarvestConfigPath*/
 //This method is used to return the default absolute path of harvest config file.
-func GetDefaultHarvestConfigPath() (string, error) {
-	var configPath string
-	var err error
-	configFileName := constant.ConfigFileName
-	if configPath = os.Getenv("HARVEST_CONF"); configPath == "" {
-		var homePath string
-		homePath = GetHarvestHomePath()
-		configPath = path.Join(homePath, configFileName)
-	} else {
-		configPath = path.Join(configPath, configFileName)
-	}
-	return configPath, err
+func GetDefaultHarvestConfigPath() string {
+    return path.Join(GetHarvestConfPath(), constant.ConfigFileName)
+}
+
+// Return directory path of Harvest configuration files (default is Home directory path)
+func GetHarvestConfPath() string {
+    if os.Getenv("HARVEST_CONF") == "" {
+        return GetHarvestHomePath()
+    }
+    return os.Getenv("HARVEST_CONF")
 }
 
 /*GetHarvestHomePath*/

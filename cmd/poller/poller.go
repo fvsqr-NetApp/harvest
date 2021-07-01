@@ -760,7 +760,7 @@ var args = options.Options{
 }
 
 func init() {
-	configPath, _ := conf.GetDefaultHarvestConfigPath()
+    configPath := conf.GetDefaultHarvestConfigPath()
 
 	var flags = pollerCmd.Flags()
 	flags.StringVarP(&args.Poller, "poller", "p", "", "Poller name as defined in config")
