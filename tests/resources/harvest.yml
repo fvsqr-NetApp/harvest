@@ -1,0 +1,35 @@
+Exporters:
+  prometheus1:
+    exporter: Prometheus
+    addr: 0.0.0.0
+    port: 12990
+  prometheus2:
+    exporter: Prometheus
+    addr: 0.0.0.0
+    port: 12991
+
+Defaults:
+  collectors:
+    - Zapi
+    - ZapiPerf
+  use_insecure_tls: true
+
+Pollers:
+  poller_dc_1:
+    datacenter: umeng_aff300
+    addr: 10.193.48.11
+    auth_style: password
+    username: admin
+    password: netapp1!
+    exporters:
+      - prometheus1
+  F2240-poller_dc_2:
+    datacenter: F2240-127-26
+    addr: 10.193.6.61
+    auth_style: password
+    username: admin
+    password: netapp1!
+    exporters:
+      - prometheus2
+Tools:
+  grafana_api_token: eyJrIjoiczJEZFpXdkJiNEV3eVZCd0NlRHFZRDUwYk1SVFNGT2YiLCJuIjoiSGFydmVzdCIsImlkIjoxfQ==

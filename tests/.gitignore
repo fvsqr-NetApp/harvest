@@ -1,0 +1,15 @@
+# Python
+*.pyc
+**/__pycache__/**
+*.pytest_cache
+
+# Pytest test results
+junit-test-results.xml
+pushresults.json
+log.xml
+
+# Virtual Env
+venv/*
+
+# work directory and pytets.log
+pytest.log

@@ -1,0 +1,6 @@
+Hosts:
+  -
+    host_name: harvest-smoke-001
+    address:  10.193.113.50
+    root_password: netapp
+    os_type: RHEL8
