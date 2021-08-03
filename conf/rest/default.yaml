@@ -1,0 +1,10 @@
+
+collector:          Rest
+
+# Order here matters!
+schedule:
+  #- instance: 600s
+  - data: 180s
+
+objects:
+  Disk:             disk.yaml
